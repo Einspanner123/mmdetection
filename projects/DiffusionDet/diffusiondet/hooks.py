@@ -17,7 +17,7 @@ from mmdet.structures import DetDataSample
 
 
 @HOOKS.register_module()
-class BiFPNFeatureVisualizationHook(Hook):
+class FPNFeatureVisualizationHook(Hook):
     """BiFPN Feature Visualization Hook. Used to visualize BiFPN features
     overlaid on original images during validation.
 
@@ -166,7 +166,7 @@ class BiFPNFeatureVisualizationHook(Hook):
             img_name = osp.basename(img_path)
             # Add current epoch number as prefix to the filename
             epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_P{i+3}.png")
+            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_P{i+3}_mm.png")
             mmcv.imwrite(vis_img, save_path)
 
     def after_val_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
@@ -180,7 +180,9 @@ class BiFPNFeatureVisualizationHook(Hook):
             outputs (Sequence[:obj:`DetDataSample`]]): A batch of data samples
                 that contain annotations and predictions.
         """
-        self._visualize_features_with_mmdet(runner, batch_idx, outputs)
+        if self.phase != 'val':
+            return
+        self._process_features(runner, batch_idx, outputs)
         
     def after_test_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
                         outputs: Sequence[DetDataSample]) -> None:
@@ -193,4 +195,6 @@ class BiFPNFeatureVisualizationHook(Hook):
             outputs (Sequence[:obj:`DetDataSample`]]): A batch of data samples
                 that contain annotations and predictions.
         """
-        self._process_features(runner, batch_idx, outputs)
+        if self.phase != 'test':
+            return
+        self._visualize_features_with_mmdet(runner, batch_idx, outputs)
