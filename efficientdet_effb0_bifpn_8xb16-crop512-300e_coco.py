@@ -1,5 +1,5 @@
 _base_ = [
-    'mmdet::_base_/datasets/coco_algae.py',
+    'mmdet::_base_/datasets/coco_detection.py',
     'mmdet::_base_/schedules/schedule_1x.py',
     'mmdet::_base_/default_runtime.py'
 ]
@@ -43,7 +43,7 @@ model = dict(
         norm_cfg=norm_cfg),
     bbox_head=dict(
         type='EfficientDetSepBNHead',
-        num_classes=10,
+        num_classes=80,
         num_ins=5,
         in_channels=64,
         feat_channels=64,
@@ -116,7 +116,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=32,
+    batch_size=16,
     num_workers=8,
     dataset=dict(type=dataset_type, pipeline=train_pipeline))
 val_dataloader = dict(dataset=dict(type=dataset_type, pipeline=test_pipeline))
@@ -167,8 +167,8 @@ custom_hooks = [
         interval=500,
         phase='val'),
     dict(
-        type='BiFPNFeatureVisualizationHook',
-        output_dir='./work_dirs/{{fileBasenameNoExtension}}/bifpn_features_test',
+        type='FeatureVisualizationHook',
+        output_dir='./work_dirs/{{fileBasenameNoExtension}}/features_test',
         interval=100,
         phase='test'),
 ]

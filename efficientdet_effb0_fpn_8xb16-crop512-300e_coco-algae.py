@@ -35,16 +35,14 @@ model = dict(
         init_cfg=dict(
             type='Pretrained', prefix='backbone', checkpoint=checkpoint)),
     neck=dict(
-        type='BiFPN',
-        num_stages=3,
+        type='FPN',
         in_channels=[40, 112, 320],
         out_channels=64,
-        start_level=0,
-        norm_cfg=norm_cfg),
+        num_outs=4),
     bbox_head=dict(
         type='EfficientDetSepBNHead',
         num_classes=10,
-        num_ins=5,
+        num_ins=4,
         in_channels=64,
         feat_channels=64,
         stacked_convs=3,
@@ -54,7 +52,7 @@ model = dict(
             octave_base_scale=4,
             scales_per_octave=3,
             ratios=[1.0, 0.5, 2.0],
-            strides=[8, 16, 32, 64, 128],
+            strides=[8, 16, 32, 64],
             center_offset=0.5),
         bbox_coder=dict(
             type='DeltaXYWHBBoxCoder',
@@ -116,7 +114,7 @@ test_pipeline = [
 ]
 
 train_dataloader = dict(
-    batch_size=32,
+    batch_size=16,
     num_workers=8,
     dataset=dict(type=dataset_type, pipeline=train_pipeline))
 val_dataloader = dict(dataset=dict(type=dataset_type, pipeline=test_pipeline))
