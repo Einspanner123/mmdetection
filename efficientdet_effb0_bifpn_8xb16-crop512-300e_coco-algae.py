@@ -4,7 +4,9 @@ _base_ = [
     'mmdet::_base_/default_runtime.py'
 ]
 custom_imports = dict(
-    imports=['projects.EfficientDet.efficientdet'], allow_failed_imports=False)
+    imports=['projects.EfficientDet.efficientdet', 'hooks.merged_hooks'], 
+    allow_failed_imports=False
+)
 
 image_size = 512
 batch_augments = [
@@ -162,14 +164,16 @@ custom_hooks = [
         update_buffers=True,
         priority=49),
     dict(
-        type='BiFPNFeatureVisualizationHook',
-        output_dir='./work_dirs/{{fileBasenameNoExtension}}/bifpn_features',
-        interval=500,
-        phase='val'),
-    dict(
-        type='BiFPNFeatureVisualizationHook',
-        output_dir='./work_dirs/{{fileBasenameNoExtension}}/bifpn_features_test',
+        type='FeatureVisualizationHook',
+        output_dir='./work_dirs/{{fileBasenameNoExtension}}/features_backbone',
         interval=100,
+        feat_from='backbone',
+        phase='test'),
+    dict(
+        type='FeatureVisualizationHook',
+        output_dir='./work_dirs/{{fileBasenameNoExtension}}/features_neck',
+        interval=100,
+        feat_from='neck',
         phase='test'),
 ]
 # cudnn_benchmark=True can accelerate fix-size training

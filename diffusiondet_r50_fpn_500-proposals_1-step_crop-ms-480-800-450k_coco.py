@@ -5,7 +5,9 @@ _base_ = [
 ]
 
 custom_imports = dict(
-    imports=['projects.DiffusionDet.diffusiondet'], allow_failed_imports=False)
+    imports=['projects.DiffusionDet.diffusiondet', 'hooks.merged_hooks'],
+    allow_failed_imports=False
+)
 
 # model settings
 model = dict(
@@ -196,10 +198,9 @@ custom_hooks = [
     #     phase='val'),
     dict(
         type='FeatureVisualizationHook',
-        output_dir='./work_dirs/{{fileBasenameNoExtension}}/backbone_features_mmdet',
+        output_dir='./work_dirs/{{fileBasenameNoExtension}}/backbone_features',
         interval=100,
         feat_from='backbone',
-        vis_method='mmdet',
         phase='test'),
 ]
 log_processor = dict(by_epoch=False)
