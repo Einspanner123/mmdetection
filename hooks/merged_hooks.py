@@ -95,6 +95,72 @@ class FeatureVisualizationHook(Hook):
         else:  # 'mmdet'
             self._visualize_with_mmdet(img, img_path, features, runner)
 
+    def _save_visualization(self, img_path, img_vis, runner, level_idx):
+        """Save the visualization to disk.
+        
+        Args:
+            img_path (str): Path to the original image.
+            img_vis (ndarray): Visualization image to save.
+            runner (Runner): The runner of the process.
+            level_idx (int): Feature level index.
+        """
+        img_name = osp.basename(img_path)
+        # Add current epoch number as prefix to the filename
+        epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
+        save_path = osp.join(self.output_dir, 
+                           f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{level_idx+3}.png")
+        mmcv.imwrite(img_vis, save_path)
+
+    def _add_colorbar(self, img, heatmap_normalized):
+        """Add a colorbar legend to the visualization.
+        
+        Args:
+            img (ndarray): Original image.
+            heatmap_normalized (ndarray): Normalized heatmap (0-1).
+            
+        Returns:
+            ndarray: Image with colorbar added.
+        """
+        h, w = img.shape[:2]
+        
+        # Create colorbar
+        colorbar_width = 30
+        colorbar = np.zeros((h, colorbar_width, 3), dtype=np.uint8)
+        
+        # Create gradient from bottom to top (blue to red)
+        for i in range(h):
+            val = 1.0 - (i / h)  # 1.0 at bottom, 0.0 at top
+            color = cv2.applyColorMap(
+                np.array([[int(val * 255)]], dtype=np.uint8), 
+                cv2.COLORMAP_JET
+            )[0, 0]
+            colorbar[i, :] = color
+        
+        # Add labels
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = 0.5
+        text_color = (255, 255, 255)
+        text_thickness = 1
+        
+        # Add "High" at the top
+        cv2.putText(colorbar, "High", (2, 20), 
+                    font, font_scale, text_color, text_thickness)
+        
+        # Add "Low" at the bottom
+        cv2.putText(colorbar, "Low", (2, h-10), 
+                    font, font_scale, text_color, text_thickness)
+        
+        # Add feature activation text
+        cv2.putText(colorbar, "Feature", (2, h//2-10), 
+                    font, font_scale, text_color, text_thickness)
+        cv2.putText(colorbar, "Activation", (2, h//2+10), 
+                    font, font_scale, text_color, text_thickness)
+        
+        # Combine with original image
+        img_with_colorbar = np.hstack((img, colorbar))
+        
+        return img_with_colorbar
+
     def _visualize_with_cv2(self, img, img_path, features, runner):
         """Visualize features using OpenCV methods.
 
@@ -121,12 +187,11 @@ class FeatureVisualizationHook(Hook):
             alpha = 0.5
             overlay = cv2.addWeighted(img, 1 - alpha, heatmap, alpha, 0)
             
+            # Add colorbar legend
+            result_img = self._add_colorbar(overlay, feat_np)
+            
             # Save the visualization
-            img_name = osp.basename(img_path)
-            # Add current epoch number as prefix to the filename
-            epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{i+3}.png")
-            mmcv.imwrite(overlay, save_path)
+            self._save_visualization(img_path, result_img, runner, i)
 
     def _visualize_with_mmdet(self, img, img_path, features, runner):
         """Visualize features using mmdetection's Visualizer.
@@ -159,12 +224,11 @@ class FeatureVisualizationHook(Hook):
             # Resize result back to original image dimensions
             vis_img = cv2.resize(vis_img, (img.shape[1], img.shape[0]))
             
+            # Add colorbar legend
+            result_img = self._add_colorbar(vis_img, feat_np)
+            
             # Save the visualization
-            img_name = osp.basename(img_path)
-            # Add current epoch number as prefix to the filename
-            epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{i+3}.png")
-            mmcv.imwrite(vis_img, save_path)
+            self._save_visualization(img_path, result_img, runner, i)
 
     def after_val_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
                        outputs: Sequence[DetDataSample]) -> None:

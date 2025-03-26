@@ -1,8 +1,6 @@
 from .bifpn import BiFPN
 from .efficientdet import EfficientDet
 from .efficientdet_head import EfficientDetSepBNHead
-from .hooks import BiFPNFeatureVisualizationHook
-from .merged_hooks import FeatureVisualizationHook
 from .huber_loss import HuberLoss
 from .tensorflow.anchor_generator import YXYXAnchorGenerator
 from .tensorflow.coco_90class import Coco90Dataset
@@ -14,6 +12,5 @@ from .utils import Conv2dSamePadding
 __all__ = [
     'EfficientDet', 'BiFPN', 'HuberLoss', 'EfficientDetSepBNHead',
     'Conv2dSamePadding', 'Coco90Dataset', 'Coco90Metric',
-    'YXYXAnchorGenerator', 'TransMaxIoUAssigner', 'YXYXDeltaXYWHBBoxCoder',
-    'BiFPNFeatureVisualizationHook', 'FeatureVisualizationHook'
+    'YXYXAnchorGenerator', 'TransMaxIoUAssigner', 'YXYXDeltaXYWHBBoxCoder'
 ]

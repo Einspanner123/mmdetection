@@ -125,7 +125,7 @@ class FeatureVisualizationHook(Hook):
             img_name = osp.basename(img_path)
             # Add current epoch number as prefix to the filename
             epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{i+3}.png")
+            save_path = osp.join(self.output_dir, f"{epoch}_{self.feat_from}_{osp.splitext(img_name)[0]}_P{i+3}.png")
             mmcv.imwrite(overlay, save_path)
 
     def _visualize_with_mmdet(self, img, img_path, features, runner):
@@ -163,7 +163,7 @@ class FeatureVisualizationHook(Hook):
             img_name = osp.basename(img_path)
             # Add current epoch number as prefix to the filename
             epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-            save_path = osp.join(self.output_dir, f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{i+3}.png")
+            save_path = osp.join(self.output_dir, f"{epoch}_{self.feat_from}_{osp.splitext(img_name)[0]}_P{i+3}.png")
             mmcv.imwrite(vis_img, save_path)
 
     def after_val_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
