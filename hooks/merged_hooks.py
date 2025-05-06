@@ -6,6 +6,8 @@ import cv2
 import mmcv
 import numpy as np
 import torch
+import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from mmengine.fileio import get
 from mmengine.hooks import Hook
 from mmengine.runner import Runner
@@ -53,14 +55,6 @@ class FeatureVisualizationHook(Hook):
 
     def _visualize_features(self, runner: Runner, batch_idx: int,
                         outputs: Sequence[DetDataSample]) -> None:
-        """Process and visualize BiFPN features using the selected method.
-
-        Args:
-            runner (:obj:`Runner`): The runner of the process.
-            batch_idx (int): The index of the current batch.
-            outputs (Sequence[:obj:`DetDataSample`]]): A batch of data samples
-                that contain annotations and predictions.
-        """
         # Only visualize at specified intervals
         total_curr_iter = runner.iter + batch_idx
         if total_curr_iter % self.interval != 0:
@@ -71,9 +65,12 @@ class FeatureVisualizationHook(Hook):
 
         # Get the original image
         img_path = outputs[0].img_path
+        img_shape = outputs[0].metainfo['img_shape']
         img_bytes = get(img_path, backend_args=self.backend_args)
-        img = mmcv.imfrombytes(img_bytes, channel_order='rgb')
-
+        img_name = osp.basename(img_path)
+        # Add current epoch number as prefix to the filename
+        epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
+        img = mmcv.imfrombytes(img_bytes, channel_order='rgb') # H, W, 3
         # Get the preprocessed image
         data_preprocessor = model.data_preprocessor
         device = next(model.parameters()).device
@@ -82,178 +79,57 @@ class FeatureVisualizationHook(Hook):
         batch_inputs = {}
         batch_inputs['inputs'] = [torch.from_numpy(img.transpose(2, 0, 1)).float().to(device)]
         batch_inputs = data_preprocessor(batch_inputs)
-        
         # Extract features
         with torch.no_grad():
             features = model.backbone(batch_inputs['inputs'])
             if self.feat_from == 'neck':
                 features = model.neck(features)
-
-        # Choose visualization method based on parameter
-        if self.vis_method == 'cv2':
-            self._visualize_with_cv2(img, img_path, features, runner)
-        else:  # 'mmdet'
-            self._visualize_with_mmdet(img, img_path, features, runner)
-
-    def _save_visualization(self, img_path, img_vis, runner, level_idx):
-        """Save the visualization to disk.
         
-        Args:
-            img_path (str): Path to the original image.
-            img_vis (ndarray): Visualization image to save.
-            runner (Runner): The runner of the process.
-            level_idx (int): Feature level index.
-        """
-        img_name = osp.basename(img_path)
-        # Add current epoch number as prefix to the filename
-        epoch = runner.epoch + 1  # +1 because epoch is 0-indexed
-        save_path = osp.join(self.output_dir, 
-                           f"{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{level_idx+3}.png")
-        mmcv.imwrite(img_vis, save_path)
-
-    def _add_colorbar(self, img, heatmap_normalized):
-        """Add a colorbar legend to the visualization.
+        image = batch_inputs['inputs'][0].permute(1, 2, 0).cpu().numpy()
+        if image.min() < 0 or image.max() > 1:
+            image = (image - image.min()) / (image.max() - image.min())
+        H, W, _ = image.shape
         
-        Args:
-            img (ndarray): Original image.
-            heatmap_normalized (ndarray): Normalized heatmap (0-1).
-            
-        Returns:
-            ndarray: Image with colorbar added.
-        """
-        h, w = img.shape[:2]
-        
-        # Create colorbar
-        colorbar_width = 30
-        colorbar = np.zeros((h, colorbar_width, 3), dtype=np.uint8)
-        
-        # Create gradient from bottom to top (blue to red)
-        for i in range(h):
-            val = 1.0 - (i / h)  # 1.0 at bottom, 0.0 at top
-            color = cv2.applyColorMap(
-                np.array([[int(val * 255)]], dtype=np.uint8), 
-                cv2.COLORMAP_JET
-            )[0, 0]
-            colorbar[i, :] = color
-        
-        # Add labels
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.5
-        text_color = (255, 255, 255)
-        text_thickness = 1
-        
-        # Add "High" at the top
-        cv2.putText(colorbar, "High", (2, 20), 
-                    font, font_scale, text_color, text_thickness)
-        
-        # Add "Low" at the bottom
-        cv2.putText(colorbar, "Low", (2, h-10), 
-                    font, font_scale, text_color, text_thickness)
-        
-        # Add feature activation text
-        cv2.putText(colorbar, "Feature", (2, h//2-10), 
-                    font, font_scale, text_color, text_thickness)
-        cv2.putText(colorbar, "Activation", (2, h//2+10), 
-                    font, font_scale, text_color, text_thickness)
-        
-        # Combine with original image
-        img_with_colorbar = np.hstack((img, colorbar))
-        
-        return img_with_colorbar
-
-    def _visualize_with_cv2(self, img, img_path, features, runner):
-        """Visualize features using OpenCV methods.
-
-        Args:
-            img: The original image.
-            img_path: Path to the original image.
-            features: The extracted features.
-            runner: The runner of the process.
-        """
-        # Visualize each feature level
+        """ Visualize Heat Map """
         for i, feat in enumerate(features):
-            # Convert feature to numpy and normalize
-            feat_np = feat.squeeze(0).mean(dim=0).cpu().numpy()
-            feat_np = (feat_np - feat_np.min()) / (feat_np.max() - feat_np.min() + 1e-10)
+            feat = feat.mean(dim=1, keepdim=True).cpu() # 1, 1, H, W
+            feat = F.interpolate(feat, size=(H, W), mode='bilinear', align_corners=False)
+            feat_np = feat.squeeze(0).permute(1, 2, 0).numpy()
+            if feat_np.min() < 0 or feat_np.max() > 1:
+                feat_np = (feat_np - feat_np.min()) / (feat_np.max() - feat_np.min())
             
-            # Resize feature map to match image size
-            feat_np = cv2.resize(feat_np, (img.shape[1], img.shape[0]))
+            plt.figure(figsize=(10, 8))
+            plt.imshow(image)
+            plt.imshow(feat_np, alpha=0.6, cmap='jet')
+            plt.colorbar(label='Feature Intensity')
+            plt.title('Feature Map Heatmap')
+            plt.axis('off')
+            plt.tight_layout()
             
-            # Apply colormap to create heatmap
-            heatmap = cv2.applyColorMap((feat_np * 255).astype(np.uint8), cv2.COLORMAP_JET)
-            heatmap = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
-            
-            # Overlay heatmap on original image with transparency
-            alpha = 0.5
-            overlay = cv2.addWeighted(img, 1 - alpha, heatmap, alpha, 0)
-            
-            # Add colorbar legend
-            result_img = self._add_colorbar(overlay, feat_np)
-            
-            # Save the visualization
-            self._save_visualization(img_path, result_img, runner, i)
+            save_path = osp.join(
+                self.output_dir,
+                f"epoch{epoch}_{osp.splitext(img_name)[0]}_{self.feat_from}_P{i+3}.png"
+            )
+            plt.savefig(save_path)
+            plt.close()
 
-    def _visualize_with_mmdet(self, img, img_path, features, runner):
-        """Visualize features using mmdetection's Visualizer.
 
-        Args:
-            img: The original image.
-            img_path: Path to the original image.
-            bifpn_features: The extracted features.
-            runner: The runner of the process.
-        """
-        # Visualize each feature level using the visualizer
-        for i, feat in enumerate(features):
-            # Get feature map original dimensions
-            _, _, feat_h, feat_w = feat.shape
-            
-            # Resize input image to feature map dimensions
-            resized_img = cv2.resize(img, (feat_w, feat_h))
-            
-            # Convert and normalize feature map
-            feat_np = feat.squeeze(0).mean(dim=0).cpu().numpy()
-            feat_np = (feat_np - feat_np.min()) / (feat_np.max() - feat_np.min() + 1e-10)
-            
-            # Use visualizer to draw heatmap on resized image
-            drawn_img = resized_img.copy()
-            self._visualizer.set_image(drawn_img)
-            heatmap = torch.from_numpy(feat_np * 255).float().unsqueeze(0)
-            self._visualizer.draw_featmap(heatmap, drawn_img, alpha=0.5)
-            vis_img = self._visualizer.get_image()
-            
-            # Resize result back to original image dimensions
-            vis_img = cv2.resize(vis_img, (img.shape[1], img.shape[0]))
-            
-            # Add colorbar legend
-            result_img = self._add_colorbar(vis_img, feat_np)
-            
-            # Save the visualization
-            self._save_visualization(img_path, result_img, runner, i)
+    def after_val_iter(
+        self, 
+        runner: Runner, 
+        batch_idx: int, 
+        data_batch: dict,
+        outputs: Sequence[DetDataSample]) -> None:
 
-    def after_val_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
-                       outputs: Sequence[DetDataSample]) -> None:
-        """Run after every ``self.interval`` validation iterations.
-
-        Args:
-            runner (:obj:`Runner`): The runner of the validation process.
-            batch_idx (int): The index of the current batch in the val loop.
-            data_batch (dict): Data from dataloader.
-            outputs (Sequence[:obj:`DetDataSample`]]): A batch of data samples
-                that contain annotations and predictions.
-        """
         if self.phase == 'val':
             self._visualize_features(runner, batch_idx, outputs)
         
-    def after_test_iter(self, runner: Runner, batch_idx: int, data_batch: dict,
-                        outputs: Sequence[DetDataSample]) -> None:
-        """Run after every ``self.interval`` test iterations.
+    def after_test_iter(
+        self, 
+        runner: Runner, 
+        batch_idx: int, 
+        data_batch: dict,
+        outputs: Sequence[DetDataSample]) -> None:
 
-        Args:
-            runner (:obj:`Runner`): The runner of the test process.
-            batch_idx (int): The index of the current batch in the test loop.
-            data_batch (dict): Data from dataloader.
-            outputs (Sequence[:obj:`DetDataSample`]]): A batch of data samples
-                that contain annotations and predictions.
-        """
         if self.phase == 'test':
             self._visualize_features(runner, batch_idx, outputs)
