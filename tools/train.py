@@ -114,6 +114,7 @@ def main():
         runner = RUNNERS.build(cfg)
 
     # start training
+    print(runner.model)
     runner.train()
 
 

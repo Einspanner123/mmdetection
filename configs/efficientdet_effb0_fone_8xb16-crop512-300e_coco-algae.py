@@ -29,7 +29,7 @@ model = dict(
         type='EfficientNet',
         arch='b0',
         drop_path_rate=0.2,
-        out_indices=(3, 4, 5),
+        out_indices=(5,),  # Only use the last feature level for FONE
         frozen_stages=0,
         conv_cfg=dict(type='Conv2dSamePadding'),
         norm_cfg=norm_cfg,
@@ -37,10 +37,10 @@ model = dict(
         init_cfg=dict(
             type='Pretrained', prefix='backbone', checkpoint=checkpoint)),
     neck=dict(
-        type='BiFPN',
-        num_stages=3,
-        in_channels=[40, 112, 320],
+        type='FONE',
+        in_channels=320,  # Use the channels from the last feature level
         out_channels=64,
+        num_outs=5,  # Match the number of scales for detection head
         start_level=0,
         norm_cfg=norm_cfg),
     bbox_head=dict(
@@ -134,7 +134,7 @@ optim_wrapper = dict(
     clip_grad=dict(max_norm=10, norm_type=2))
 
 # learning policy
-max_epochs = 250
+max_epochs = 500
 param_scheduler = [
     dict(type='LinearLR', start_factor=0.1, by_epoch=False, begin=0, end=917),
     dict(
@@ -155,7 +155,9 @@ vis_backends = [
 visualizer = dict(
     type='DetLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 
-default_hooks = dict(checkpoint=dict(type='CheckpointHook', interval=15))
+default_hooks = dict(checkpoint=dict(
+        _scope_='mmdet', interval=1, type='CheckpointHook', 
+        save_best='coco/bbox_mAP', rule='greater', max_keep_ckpts=5))
 custom_hooks = [
     dict(
         type='EMAHook',
@@ -163,6 +165,13 @@ custom_hooks = [
         momentum=0.0002,
         update_buffers=True,
         priority=49),
+    dict(
+        type='EarlyStoppingHook',
+        priority=50,
+        patience=50,
+        min_delta=0.001,
+        monitor='coco/bbox_mAP',
+        rule='greater'),
     dict(
         type='FeatureVisualizationHook',
         output_dir='./work_dirs/{{fileBasenameNoExtension}}/features_backbone',
@@ -182,4 +191,4 @@ env_cfg = dict(cudnn_benchmark=True)
 # NOTE: `auto_scale_lr` is for automatically scaling LR,
 # USER SHOULD NOT CHANGE ITS VALUES.
 # base_batch_size = (8 GPUs) x (16 samples per GPU)
-auto_scale_lr = dict(base_batch_size=128)
+auto_scale_lr = dict(base_batch_size=128) 

@@ -1,9 +1,9 @@
-_base_ = 'mmdet::common/ssj_scp_270k_coco-instance.py'
-# _base_ = [
-#     'mmdet::_base_/datasets/coco_algae.py',
-#     'mmdet::_base_/schedules/schedule_1x.py',
-#     'mmdet::_base_/default_runtime.py'
-# ]
+# _base_ = 'mmdet::common/ssj_scp_270k_coco-instance.py'
+_base_ = [
+    'mmdet::_base_/datasets/coco_algae.py',
+    'mmdet::_base_/schedules/schedule_1x.py',
+    'mmdet::_base_/default_runtime.py'
+]
 
 custom_imports = dict(
     imports=['projects.CO-DETR.codetr', 'hooks.merged_hooks'], 
@@ -12,7 +12,7 @@ custom_imports = dict(
 # model settings
 num_dec_layer = 6
 loss_lambda = 2.0
-num_classes = 80
+num_classes = 10
 
 image_size = (1024, 1024)
 batch_augments = [
@@ -282,55 +282,33 @@ model = dict(
     ])
 
 # LSJ + CopyPaste
-load_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(type='LoadAnnotations', with_bbox=True, with_mask=False),
-    dict(
-        type='RandomResize',
-        scale=image_size,
-        ratio_range=(0.1, 2.0),
-        keep_ratio=True),
-    dict(
-        type='RandomCrop',
-        crop_type='absolute_range',
-        crop_size=image_size,
-        recompute_bbox=True,
-        allow_negative_crop=True),
-    dict(type='FilterAnnotations', min_gt_bbox_wh=(1e-2, 1e-2)),
-    dict(type='RandomFlip', prob=0.5),
-    dict(type='Pad', size=image_size, pad_val=dict(img=(114, 114, 114))),
-]
-
 train_pipeline = [
-    # Randomly copy instance's mask and paste into another image.
-    # dict(type='CopyPaste', max_num_pasted=100),
+    dict(type='LoadImageFromFile', backend_args={{_base_.backend_args}}),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', scale=(1333, 800), keep_ratio=True),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='RandomShift', prob=0.5, max_shift_px=32),
     dict(type='PackDetInputs')
 ]
-
-train_dataloader = dict(
-    # batch_size=2,
-    sampler=dict(type='DefaultSampler', shuffle=True),
-    dataset=dict(
-        pipeline=train_pipeline,
-        dataset=dict(
-            filter_cfg=dict(filter_empty_gt=True), 
-            pipeline=load_pipeline)))
-
-# follow ViTDet
 test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(type='Resize', scale=image_size, keep_ratio=True),  # diff
-    dict(type='Pad', size=image_size, pad_val=dict(img=(114, 114, 114))),
-    dict(type='LoadAnnotations', with_bbox=True, with_mask=False),
+    dict(type='LoadImageFromFile', backend_args={{_base_.backend_args}}),
+    dict(type='Resize', scale=(1333, 800), keep_ratio=True),
+    dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='PackDetInputs',
         meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
                    'scale_factor'))
 ]
 
+dataset_type = 'CocoDataset'
+evalute_type = 'CocoMetric'
+batch_size = 1
+train_dataloader = dict(
+    batch_size=batch_size,
+    num_workers=batch_size,
+    dataset=dict(type=dataset_type, pipeline=train_pipeline))
 val_dataloader = dict(dataset=dict(pipeline=test_pipeline))
 test_dataloader = val_dataloader
-
 optim_wrapper = dict(
     _delete_=True,
     type='OptimWrapper',
@@ -341,7 +319,7 @@ optim_wrapper = dict(
 val_evaluator = dict(metric='bbox')
 test_evaluator = val_evaluator
 
-max_epochs = 12
+max_epochs = 50
 train_cfg = dict(
     _delete_=True,
     type='EpochBasedTrainLoop',
@@ -376,21 +354,28 @@ custom_hooks = [
     #     update_buffers=True,
     #     priority=49),
     dict(
+        type='EarlyStoppingHook',
+        priority=50,
+        patience=10,
+        min_delta=0.001,
+        monitor='coco/bbox_mAP',
+        rule='greater'),
+    dict(
         type='FeatureVisualizationHook',
         output_dir='./work_dirs/{{fileBasenameNoExtension}}/backbone_features',
         interval=100,
         feat_from='backbone',
-        phase='val'),
+        phase='test'),
     dict(
         type='FeatureVisualizationHook',
         output_dir='./work_dirs/{{fileBasenameNoExtension}}/backbone_features',
         interval=100,
         feat_from='neck',
-        phase='val'),
+        phase='test'),
 ]
 log_processor = dict(by_epoch=True)
 
 # NOTE: `auto_scale_lr` is for automatically scaling LR,
 # USER SHOULD NOT CHANGE ITS VALUES.
 # base_batch_size = (8 GPUs) x (2 samples per GPU)
-auto_scale_lr = dict(base_batch_size=16)
+auto_scale_lr = dict(base_batch_size=64)
